@@ -45,7 +45,7 @@ import (
   "go.uber.org/zap"
   "go.uber.org/zap/zapcore"
 
-  "<module-path>/lad"
+  "github.com/omivix/lad"
 )
 
 func main() {
