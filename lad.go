@@ -22,11 +22,17 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
+// type alias
+type (
+	Logger        = zap.Logger
+	SugaredLogger = zap.SugaredLogger
+)
+
 // L returns the current global zap Logger (zap.L()).
-func L() *zap.Logger { return zap.L() }
+func L() *Logger { return zap.L() }
 
 // S returns the current global zap SugaredLogger (zap.S()).
-func S() *zap.SugaredLogger { return zap.S() }
+func S() *SugaredLogger { return zap.S() }
 
 // DefaultTimeFormat is the default timestamp layout used by encoders.
 const DefaultTimeFormat = "2006-01-02 15:04:05.000"
@@ -184,7 +190,7 @@ func WithFile(fc FileConfig) Option {
 
 // New builds a zap Logger with the given options.
 // It does not modify zap's global logger.
-func New(opts ...Option) (*zap.Logger, error) {
+func New(opts ...Option) (*Logger, error) {
 	cfg := &config{}
 	for _, opt := range opts {
 		if err := opt(cfg); err != nil {
@@ -208,7 +214,7 @@ func New(opts ...Option) (*zap.Logger, error) {
 
 // MustNew is like New but panics on error.
 // This is intended for application startup code (e.g., main()).
-func MustNew(opts ...Option) *zap.Logger {
+func MustNew(opts ...Option) *Logger {
 	l, err := New(opts...)
 	if err != nil {
 		panic(err)
@@ -217,7 +223,7 @@ func MustNew(opts ...Option) *zap.Logger {
 }
 
 // InitGlobal builds a logger and replaces zap's global logger (zap.ReplaceGlobals).
-func InitGlobal(opts ...Option) (*zap.Logger, error) {
+func InitGlobal(opts ...Option) (*Logger, error) {
 	l, err := New(opts...)
 	if err != nil {
 		return nil, err
@@ -228,7 +234,7 @@ func InitGlobal(opts ...Option) (*zap.Logger, error) {
 
 // MustInitGlobal is like InitGlobal but panics on error.
 // This is intended for application startup code (e.g., main()).
-func MustInitGlobal(opts ...Option) *zap.Logger {
+func MustInitGlobal(opts ...Option) *Logger {
 	l, err := InitGlobal(opts...)
 	if err != nil {
 		panic(err)
