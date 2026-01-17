@@ -27,6 +27,10 @@ func Dict(key string, val ...zapcore.Field) zapcore.Field {
 	return zap.Dict(key, val...)
 }
 
+func Error(err error) zapcore.Field {
+	return zap.Error(err)
+}
+
 func Float32(key string, val float32) zapcore.Field {
 	return zapcore.Field{Key: key, Type: zapcore.Float32Type, Integer: int64(math.Float32bits(val))}
 }
