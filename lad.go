@@ -223,23 +223,22 @@ func MustNew(opts ...Option) *Logger {
 }
 
 // InitGlobal builds a logger and replaces zap's global logger (zap.ReplaceGlobals).
-func InitGlobal(opts ...Option) (*Logger, error) {
+func InitGlobal(opts ...Option) error {
 	l, err := New(opts...)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	zap.ReplaceGlobals(l)
-	return l, nil
+	return nil
 }
 
 // MustInitGlobal is like InitGlobal but panics on error.
 // This is intended for application startup code (e.g., main()).
-func MustInitGlobal(opts ...Option) *Logger {
-	l, err := InitGlobal(opts...)
+func MustInitGlobal(opts ...Option) {
+	err := InitGlobal(opts...)
 	if err != nil {
 		panic(err)
 	}
-	return l
 }
 
 // RedirectStdLog redirects the standard library's package-global logger (log.Print, etc.)
