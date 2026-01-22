@@ -245,18 +245,18 @@ func MustInitGlobal(opts ...Option) {
 // to the supplied zap logger at InfoLevel.
 //
 // It returns a function that restores the original standard logger configuration.
-func RedirectStdLog(l *zap.Logger) func() {
+func RedirectStdLog(l *Logger) func() {
 	return zap.RedirectStdLog(l)
 }
 
 // RedirectStdLogAt is like RedirectStdLog but allows specifying the level.
-func RedirectStdLogAt(l *zap.Logger, level zapcore.Level) (func(), error) {
+func RedirectStdLogAt(l *Logger, level zapcore.Level) (func(), error) {
 	return zap.RedirectStdLogAt(l, level)
 }
 
 // Sync flushes any buffered log entries.
 // It ignores common errors produced when syncing stdout/stderr in some environments.
-func Sync(l *zap.Logger) error {
+func Sync(l *Logger) error {
 	if l == nil {
 		return nil
 	}
