@@ -1,12 +1,28 @@
 package lad_test
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/omivix/lad"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
+
+func TestInitGlobalSimple(t *testing.T) {
+	lad.InitGlobal(
+		lad.WithCaller(),
+		lad.WithCallerPathFrom("omivix"),
+	)
+
+	defer func() { _ = lad.Sync(lad.L()) }()
+
+	lad.L().Info("Log Init")
+	_, err := strconv.Atoi("a")
+	if err != nil {
+		lad.L().Error("Conversion error", zap.Error(err))
+	}
+}
 
 func TestMustInitGlobalConsole(t *testing.T) {
 	lad.MustInitGlobal(

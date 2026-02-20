@@ -41,8 +41,9 @@ const DefaultTimeFormat = "2006-01-02 15:04:05.000"
 type Option func(*config) error
 
 type config struct {
-	cores   []zapcore.Core
-	zapOpts []zap.Option
+	coreBuilders []func(*config) (zapcore.Core, error)
+	zapOpts      []zap.Option
+	callerEncode zapcore.CallerEncoder
 }
 
 // WithZapOptions appends raw zap options to the logger being built.
@@ -73,6 +74,22 @@ func WithCallerSkip(skip int) Option {
 	}
 }
 
+// WithCallerPathFrom configures caller rendering to start from the first
+// occurrence of marker in the source file path.
+//
+// Example marker: "omivix" -> "omivix/application/service.go:93"
+// If marker is not found, it falls back to zap's short caller format.
+func WithCallerPathFrom(marker string) Option {
+	return func(c *config) error {
+		marker = strings.TrimSpace(marker)
+		if marker == "" {
+			return errors.New("lad: caller path marker cannot be empty")
+		}
+		c.callerEncode = callerEncoderFromMarker(marker)
+		return nil
+	}
+}
+
 // WithStacktrace enables stack traces at and above the given level.
 func WithStacktrace(level zapcore.Level) Option {
 	return func(c *config) error {
@@ -92,26 +109,29 @@ type ConsoleConfig struct {
 // WithConsole adds a console core to the logger.
 func WithConsole(cc ConsoleConfig) Option {
 	return func(c *config) error {
-		out := cc.Output
-		if out == nil {
-			out = os.Stdout
-		}
+		c.coreBuilders = append(c.coreBuilders, func(cfg *config) (zapcore.Core, error) {
+			out := cc.Output
+			if out == nil {
+				out = os.Stdout
+			}
 
-		encCfg := zap.NewProductionEncoderConfig()
-		encCfg.EncodeTime = timeEncoder(orDefault(cc.TimeFormat, DefaultTimeFormat))
+			encCfg := zap.NewProductionEncoderConfig()
+			encCfg.EncodeTime = timeEncoder(orDefault(cc.TimeFormat, DefaultTimeFormat))
+			encCfg.EncodeCaller = cfg.callerEncode
 
-		if cc.Colored {
-			encCfg.EncodeLevel = zapcore.CapitalColorLevelEncoder
-		} else {
-			encCfg.EncodeLevel = zapcore.CapitalLevelEncoder
-		}
+			if cc.Colored {
+				encCfg.EncodeLevel = zapcore.CapitalColorLevelEncoder
+			} else {
+				encCfg.EncodeLevel = zapcore.CapitalLevelEncoder
+			}
 
-		core := zapcore.NewCore(
-			zapcore.NewConsoleEncoder(encCfg),
-			zapcore.AddSync(out),
-			cc.Level,
-		)
-		c.cores = append(c.cores, core)
+			core := zapcore.NewCore(
+				zapcore.NewConsoleEncoder(encCfg),
+				zapcore.AddSync(out),
+				cc.Level,
+			)
+			return core, nil
+		})
 		return nil
 	}
 }
@@ -142,48 +162,51 @@ type FileConfig struct {
 // WithFile adds a rotating file core to the logger.
 func WithFile(fc FileConfig) Option {
 	return func(c *config) error {
-		if strings.TrimSpace(fc.Filename) == "" {
-			return errors.New("lad: FileConfig.Filename is required")
-		}
+		c.coreBuilders = append(c.coreBuilders, func(cfg *config) (zapcore.Core, error) {
+			if strings.TrimSpace(fc.Filename) == "" {
+				return nil, errors.New("lad: FileConfig.Filename is required")
+			}
 
-		maxSize := fc.MaxSizeMB
-		if maxSize <= 0 {
-			maxSize = 100
-		}
+			maxSize := fc.MaxSizeMB
+			if maxSize <= 0 {
+				maxSize = 100
+			}
 
-		encoding := fc.Encoding
-		if encoding == "" {
-			encoding = JSONEncoding
-		}
+			encoding := fc.Encoding
+			if encoding == "" {
+				encoding = JSONEncoding
+			}
 
-		hook := &lumberjack.Logger{
-			Filename:   fc.Filename,
-			MaxSize:    maxSize,
-			MaxBackups: fc.MaxBackups,
-			MaxAge:     fc.MaxAgeDays,
-			Compress:   fc.Compress,
-		}
+			hook := &lumberjack.Logger{
+				Filename:   fc.Filename,
+				MaxSize:    maxSize,
+				MaxBackups: fc.MaxBackups,
+				MaxAge:     fc.MaxAgeDays,
+				Compress:   fc.Compress,
+			}
 
-		encCfg := zap.NewProductionEncoderConfig()
-		encCfg.EncodeTime = timeEncoder(orDefault(fc.TimeFormat, DefaultTimeFormat))
-		encCfg.EncodeLevel = zapcore.CapitalLevelEncoder
+			encCfg := zap.NewProductionEncoderConfig()
+			encCfg.EncodeTime = timeEncoder(orDefault(fc.TimeFormat, DefaultTimeFormat))
+			encCfg.EncodeLevel = zapcore.CapitalLevelEncoder
+			encCfg.EncodeCaller = cfg.callerEncode
 
-		var enc zapcore.Encoder
-		switch encoding {
-		case JSONEncoding:
-			enc = zapcore.NewJSONEncoder(encCfg)
-		case ConsoleEncoding:
-			enc = zapcore.NewConsoleEncoder(encCfg)
-		default:
-			return fmt.Errorf("lad: unknown FileEncoding %q", encoding)
-		}
+			var enc zapcore.Encoder
+			switch encoding {
+			case JSONEncoding:
+				enc = zapcore.NewJSONEncoder(encCfg)
+			case ConsoleEncoding:
+				enc = zapcore.NewConsoleEncoder(encCfg)
+			default:
+				return nil, fmt.Errorf("lad: unknown FileEncoding %q", encoding)
+			}
 
-		core := zapcore.NewCore(
-			enc,
-			zapcore.AddSync(hook),
-			fc.Level,
-		)
-		c.cores = append(c.cores, core)
+			core := zapcore.NewCore(
+				enc,
+				zapcore.AddSync(hook),
+				fc.Level,
+			)
+			return core, nil
+		})
 		return nil
 	}
 }
@@ -191,7 +214,9 @@ func WithFile(fc FileConfig) Option {
 // New builds a zap Logger with the given options.
 // It does not modify zap's global logger.
 func New(opts ...Option) (*Logger, error) {
-	cfg := &config{}
+	cfg := &config{
+		callerEncode: zapcore.ShortCallerEncoder,
+	}
 	for _, opt := range opts {
 		if err := opt(cfg); err != nil {
 			return nil, err
@@ -199,7 +224,7 @@ func New(opts ...Option) (*Logger, error) {
 	}
 
 	// Default core if none provided: colored console at Debug level.
-	if len(cfg.cores) == 0 {
+	if len(cfg.coreBuilders) == 0 {
 		_ = WithConsole(ConsoleConfig{
 			Level:      zap.DebugLevel,
 			Colored:    true,
@@ -208,7 +233,16 @@ func New(opts ...Option) (*Logger, error) {
 		})(cfg)
 	}
 
-	core := zapcore.NewTee(cfg.cores...)
+	cores := make([]zapcore.Core, 0, len(cfg.coreBuilders))
+	for _, build := range cfg.coreBuilders {
+		core, err := build(cfg)
+		if err != nil {
+			return nil, err
+		}
+		cores = append(cores, core)
+	}
+
+	core := zapcore.NewTee(cores...)
 	return zap.New(core, cfg.zapOpts...), nil
 }
 
@@ -297,4 +331,37 @@ func isIgnorableSyncErr(err error) bool {
 		return true
 	}
 	return false
+}
+
+func callerEncoderFromMarker(marker string) zapcore.CallerEncoder {
+	marker = normalizePathPart(marker)
+	return func(caller zapcore.EntryCaller, pae zapcore.PrimitiveArrayEncoder) {
+		path := normalizePathPart(caller.File)
+		if rel, ok := trimPathFromMarker(path, marker); ok {
+			pae.AppendString(fmt.Sprintf("%s:%d", rel, caller.Line))
+			return
+		}
+		zapcore.ShortCallerEncoder(caller, pae)
+	}
+}
+
+func trimPathFromMarker(path, marker string) (string, bool) {
+	if marker == "" {
+		return "", false
+	}
+	if path == marker {
+		return path, true
+	}
+	pivot := "/" + marker + "/"
+	if idx := strings.Index(path, pivot); idx >= 0 {
+		return path[idx+1:], true
+	}
+	if strings.HasPrefix(path, marker+"/") {
+		return path, true
+	}
+	return "", false
+}
+
+func normalizePathPart(path string) string {
+	return strings.Trim(strings.ReplaceAll(path, "\\", "/"), "/")
 }

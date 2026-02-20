@@ -64,6 +64,7 @@ func main() {
       Encoding:   lad.JSONEncoding, // default is JSONEncoding
     }),
     lad.WithCaller(),
+    lad.WithCallerPathFrom("omivix"), // caller: omivix/xxx/yyy.go:line
     lad.WithStacktrace(zapcore.ErrorLevel),
   )
 
@@ -192,6 +193,7 @@ defer func() { _ = lad.Sync(lad.L()) }()
 
 ### zap options
 - `WithCaller()`
+- `WithCallerPathFrom(marker string)` (e.g. `marker="omivix"` -> `omivix/path/to/file.go:line`)
 - `WithCallerSkip(skip int)`
 - `WithStacktrace(level zapcore.Level)`
 - `WithZapOptions(opts ...zap.Option)`
